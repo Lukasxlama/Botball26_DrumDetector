@@ -2,6 +2,10 @@
 #include <algorithm>
 #include <cmath>
 #include <thread>
+#include <filesystem>
+#include <chrono>
+#include <iomanip>
+#include <sstream>
 #include "../include/DrumDetector.hpp"
 #include "../include/DrumDetectorConfig.hpp"
 
@@ -41,6 +45,7 @@ namespace DrumDetector
         m_cap.set(cv::CAP_PROP_FRAME_HEIGHT, 1080);
 
         m_cap.set(cv::CAP_PROP_AUTO_EXPOSURE, 1);
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));
         m_cap.set(cv::CAP_PROP_EXPOSURE, config.getExposure());
 
         std::this_thread::sleep_for(std::chrono::seconds(2));
@@ -90,6 +95,17 @@ namespace DrumDetector
             return result;
         }
 
+        auto now = std::chrono::system_clock::now();
+        auto in_time_t = std::chrono::system_clock::to_time_t(now);
+        std::stringstream ss;
+        ss << std::put_time(std::localtime(&in_time_t), "%Y%m%d_%H%M%S");
+        std::string timestamp = ss.str();
+
+        std::string debugDir = "DrumDetectorDebug/";
+        std::filesystem::create_directories(debugDir);
+
+        cv::imwrite(debugDir + timestamp + "_1_raw.png", frame);
+
         cv::Mat processed, mask;
         cv::GaussianBlur(frame, processed, cv::Size(5, 5), 0);
         cv::cvtColor(processed, processed, cv::COLOR_BGR2Lab);
@@ -103,7 +119,8 @@ namespace DrumDetector
         {
             if (double area = cv::contourArea(cnt); area > config.getMinMarkerArea() && area < config.getMaxMarkerArea())
             {
-                if (cv::Moments m = cv::moments(cnt); m.m00 != 0) candidates.emplace_back(m.m10/m.m00, m.m01/m.m00);
+                if (cv::Moments m = cv::moments(cnt); m.m00 != 0)
+                    candidates.emplace_back(m.m10 / m.m00, m.m01 / m.m00);
             }
         }
 
@@ -148,6 +165,11 @@ namespace DrumDetector
         cv::warpPerspective(frame, warped, trans, cv::Size(config.getTrayWidth(), config.getTrayHeight()));
 
         cv::Mat final_lab = enhanceSaturation(warped);
+
+        cv::Mat debugWarp;
+        cv::cvtColor(final_lab, debugWarp, cv::COLOR_Lab2BGR);
+        cv::imwrite(debugDir + timestamp + "_2_warped_boosted.png", debugWarp);
+
         std::vector<cv::Mat> chs;
         cv::split(final_lab, chs);
 
@@ -156,10 +178,14 @@ namespace DrumDetector
         {
             cv::Rect roi(i * slot_w + 40, 40, slot_w - 80, config.getTrayHeight() - 80);
             int a = getMedian(chs[1](roi));
+            int b = getMedian(chs[2](roi));
 
-            if (int b = getMedian(chs[2](roi)); b < config.getBlueMax()) result.items.push_back(Types::DrumColor::Blue);
-            else if (a > config.getPinkMin()) result.items.push_back(Types::DrumColor::Pink);
-            else result.items.push_back(Types::DrumColor::Empty);
+            if (b < config.getBlueMax())
+                result.items.push_back(Types::DrumColor::Blue);
+            else if (a > config.getPinkMin())
+                result.items.push_back(Types::DrumColor::Pink);
+            else
+                result.items.push_back(Types::DrumColor::Empty);
         }
 
         return result;
