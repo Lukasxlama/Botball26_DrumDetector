@@ -1,0 +1,219 @@
+// --- Includes --- //
+#include <algorithm>
+#include <cmath>
+#include <thread>
+#include "../include/DrumDetector.hpp"
+#include "../include/DrumDetectorConfig.hpp"
+
+namespace DrumDetector
+{
+    DrumDetector& DrumDetector::getInstance()
+    {
+        static DrumDetector instance;
+        return instance;
+    }
+
+    DrumDetector::DrumDetector()
+    {
+        init();
+    }
+
+    DrumDetector::~DrumDetector()
+    {
+        if (m_cap.isOpened())
+        {
+            m_cap.release();
+        }
+    }
+
+    void DrumDetector::init()
+    {
+        const auto& config = Types::DrumDetectorConfig::getInstance();
+        if (m_cap.isOpened())
+        {
+            m_cap.release();
+        }
+
+        m_cap.open(config.getCameraIndex(), cv::CAP_V4L2);
+
+        m_cap.set(cv::CAP_PROP_FOURCC, cv::VideoWriter::fourcc('M', 'J', 'P', 'G'));
+        m_cap.set(cv::CAP_PROP_FRAME_WIDTH, 1920);
+        m_cap.set(cv::CAP_PROP_FRAME_HEIGHT, 1080);
+
+        m_cap.set(cv::CAP_PROP_AUTO_EXPOSURE, 1);
+        m_cap.set(cv::CAP_PROP_EXPOSURE, config.getExposure());
+
+        std::this_thread::sleep_for(std::chrono::seconds(2));
+    }
+
+    cv::Mat DrumDetector::getSnapshot()
+    {
+        cv::Mat temp;
+        for (int i = 0; i < 10; i++)
+        {
+            m_cap.read(temp);
+        }
+        m_cap.read(temp);
+        return temp;
+    }
+
+    cv::Mat DrumDetector::enhanceSaturation(const cv::Mat& src)
+    {
+        const auto& config = Types::DrumDetectorConfig::getInstance();
+        cv::Mat lab;
+        cv::cvtColor(src, lab, cv::COLOR_BGR2Lab);
+
+        cv::Mat lut(1, 256, CV_8U);
+        uint8_t* p = lut.ptr();
+        const auto factor = static_cast<float>(config.getSaturationBoost());
+        for (int i = 0; i < 256; ++i)
+        {
+            p[i] = cv::saturate_cast<uint8_t>(128.0f + (static_cast<float>(i) - 128.0f) * factor);
+        }
+
+        std::vector<cv::Mat> channels;
+        cv::split(lab, channels);
+        cv::LUT(channels[1], lut, channels[1]);
+        cv::LUT(channels[2], lut, channels[2]);
+        cv::merge(channels, lab);
+        return lab;
+    }
+
+    Types::DrumColorList DrumDetector::getDrumColors()
+    {
+        auto& config = Types::DrumDetectorConfig::getInstance();
+        Types::DrumColorList result;
+        cv::Mat frame = getSnapshot();
+
+        if (frame.empty())
+        {
+            return result;
+        }
+
+        cv::Mat processed, mask;
+        cv::GaussianBlur(frame, processed, cv::Size(5, 5), 0);
+        cv::cvtColor(processed, processed, cv::COLOR_BGR2Lab);
+        cv::inRange(processed, cv::Scalar(0, 0, config.getBThreshYellow()), cv::Scalar(255, 255, 255), mask);
+
+        std::vector<std::vector<cv::Point>> contours;
+        cv::findContours(mask, contours, cv::RETR_EXTERNAL, cv::CHAIN_APPROX_SIMPLE);
+
+        std::vector<cv::Point2f> candidates;
+        for (const auto& cnt : contours)
+        {
+            if (double area = cv::contourArea(cnt); area > config.getMinMarkerArea() && area < config.getMaxMarkerArea())
+            {
+                if (cv::Moments m = cv::moments(cnt); m.m00 != 0) candidates.emplace_back(m.m10/m.m00, m.m01/m.m00);
+            }
+        }
+
+        if (candidates.size() < 4)
+        {
+            return result;
+        }
+
+        std::vector<cv::Point2f> best_pts;
+        double max_area = 0;
+        for (size_t i = 0; i < candidates.size(); i++)
+        {
+            for (size_t j = i + 1; j < candidates.size(); j++)
+            {
+                for (size_t k = j + 1; k < candidates.size(); k++)
+                {
+                    for (size_t l = k + 1; l < candidates.size(); l++)
+                    {
+                        if (std::vector quad = {candidates[i], candidates[j], candidates[k], candidates[l]}; checkShape(quad))
+                        {
+                            quad = sortRadial(quad);
+                            if (double a = cv::contourArea(quad); a > max_area) { max_area = a; best_pts = quad; }
+                        }
+                    }
+                }
+            }
+        }
+
+        if (best_pts.empty())
+        {
+            return result;
+        }
+
+        cv::Mat warped;
+        cv::Point2f dst_pts[4] = {
+            {0, 0},
+            {static_cast<float>(config.getTrayWidth()), 0},
+            {static_cast<float>(config.getTrayWidth()), static_cast<float>(config.getTrayHeight())},
+            {0, static_cast<float>(config.getTrayHeight())}
+        };
+        cv::Mat trans = cv::getPerspectiveTransform(best_pts.data(), dst_pts);
+        cv::warpPerspective(frame, warped, trans, cv::Size(config.getTrayWidth(), config.getTrayHeight()));
+
+        cv::Mat final_lab = enhanceSaturation(warped);
+        std::vector<cv::Mat> chs;
+        cv::split(final_lab, chs);
+
+        int slot_w = config.getTrayWidth() / 8;
+        for (int i = 0; i < 8; i++)
+        {
+            cv::Rect roi(i * slot_w + 40, 40, slot_w - 80, config.getTrayHeight() - 80);
+            int a = getMedian(chs[1](roi));
+
+            if (int b = getMedian(chs[2](roi)); b < config.getBlueMax()) result.items.push_back(Types::DrumColor::Blue);
+            else if (a > config.getPinkMin()) result.items.push_back(Types::DrumColor::Pink);
+            else result.items.push_back(Types::DrumColor::Empty);
+        }
+
+        return result;
+    }
+
+    std::vector<cv::Point2f> DrumDetector::sortRadial(std::vector<cv::Point2f> pts)
+    {
+        cv::Point2f center(0, 0);
+        for (const auto& p : pts) center += p;
+        center.x /= static_cast<float>(pts.size());
+        center.y /= static_cast<float>(pts.size());
+
+        std::sort(pts.begin(), pts.end(), [center](const cv::Point2f& a, const cv::Point2f& b) {
+            return std::atan2(a.y - center.y, a.x - center.x) < std::atan2(b.y - center.y, b.x - center.x);
+        });
+        return pts;
+    }
+
+    bool DrumDetector::checkShape(std::vector<cv::Point2f> pts)
+    {
+        if (pts.size() != 4) return false;
+        pts = sortRadial(pts);
+
+        const double d1 = cv::norm(pts[0] - pts[1]);
+        const double d2 = cv::norm(pts[1] - pts[2]);
+        const double d3 = cv::norm(pts[2] - pts[3]);
+        const double d4 = cv::norm(pts[3] - pts[0]);
+
+        const double width = (d1 + d3) / 2.0;
+        const double height = (d2 + d4) / 2.0;
+
+        if (height < 5.0) return false;
+
+        if (const double ratio = width / height; ratio < 2.5 || ratio > 6.0) return false;
+        if (std::abs(d1 - d3) > (width * 0.3)) return false;
+
+        return true;
+    }
+
+    int DrumDetector::getMedian(const cv::Mat& channel)
+    {
+        if (channel.empty()) return 128;
+
+        const cv::Mat continuous = channel.clone();
+
+        std::vector<uint8_t> vec;
+        if (continuous.isContinuous()) {
+            vec.assign(continuous.datastart, continuous.dataend);
+        } else {
+            continuous.copyTo(vec);
+        }
+
+        const auto m = vec.begin() + static_cast<long>(vec.size()) / 2;
+        std::nth_element(vec.begin(), m, vec.end());
+        return *m;
+    }
+}
