@@ -84,11 +84,14 @@ namespace DrumDetector::Types
             [[nodiscard]] double getMinMarkerArea() const { return m_minMarkerArea; }
             [[nodiscard]] double getMaxMarkerArea() const { return m_maxMarkerArea; }
 
+            // --- Others --- //
+            [[nodiscard]] std::string getConfigPath() const { return config_path; }
+
         private:
             /** @brief Default constructor creating an empty config. */
             DrumDetectorConfig() = default;
 
-            // Profile params
+            // --- Profile params --- //
             std::string m_name{};
             int m_exposure{};
             int m_b_thresh_yellow{};
@@ -96,11 +99,14 @@ namespace DrumDetector::Types
             int m_blue_max{};
             int m_pink_min{};
 
-            // Internal hardware params
+            // --- Internal hardware params --- //
             int m_cameraIndex{};
             int m_trayWidth{};
             int m_trayHeight{};
             double m_minMarkerArea{};
             double m_maxMarkerArea{};
+
+            // --- Others --- //
+            std::string config_path{};
     };
 }

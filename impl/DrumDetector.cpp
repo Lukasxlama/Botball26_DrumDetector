@@ -95,16 +95,18 @@ namespace DrumDetector
             return result;
         }
 
+        std::filesystem::path configPath(config.getConfigPath());
+        std::filesystem::path debugDir = configPath.parent_path() / "DrumDetectorDebug";
+
+        std::filesystem::create_directories(debugDir);
+
         auto now = std::chrono::system_clock::now();
         auto in_time_t = std::chrono::system_clock::to_time_t(now);
         std::stringstream ss;
         ss << std::put_time(std::localtime(&in_time_t), "%Y%m%d_%H%M%S");
         std::string timestamp = ss.str();
 
-        std::string debugDir = "DrumDetectorDebug/";
-        std::filesystem::create_directories(debugDir);
-
-        cv::imwrite(debugDir + timestamp + "_1_raw.png", frame);
+        cv::imwrite((debugDir / (timestamp + "_1_raw.png")).string(), frame);
 
         cv::Mat processed, mask;
         cv::GaussianBlur(frame, processed, cv::Size(5, 5), 0);
@@ -168,7 +170,7 @@ namespace DrumDetector
 
         cv::Mat debugWarp;
         cv::cvtColor(final_lab, debugWarp, cv::COLOR_Lab2BGR);
-        cv::imwrite(debugDir + timestamp + "_2_warped_boosted.png", debugWarp);
+        cv::imwrite((debugDir / (timestamp + "_2_warped_boosted.png")).string(), debugWarp);
 
         std::vector<cv::Mat> chs;
         cv::split(final_lab, chs);

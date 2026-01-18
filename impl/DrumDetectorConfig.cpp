@@ -21,6 +21,8 @@ namespace DrumDetector::Types
             std::cerr << "[DrumDetectorConfig] Error: Could not open " << filePath << std::endl;
             return false;
         }
+        
+        this->config_path = filePath;
 
         try
         {
