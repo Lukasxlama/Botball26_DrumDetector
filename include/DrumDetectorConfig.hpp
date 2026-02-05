@@ -3,6 +3,8 @@
 
 // --- Includes --- //
 #include <string>
+#include <memory>
+#include <spdlog/spdlog.h>
 
 // --- Code --- //
 /**
@@ -69,6 +71,12 @@ namespace DrumDetector::Types
              */
             bool load(const std::string& filePath);
 
+            /**
+             * @brief Sets a spdlogger for debug purposes.
+             * @param logger Logger object used in the main program.
+             */
+            void setLogger(std::shared_ptr<spdlog::logger> logger);
+
             // --- Profile Getters ---
             [[nodiscard]] std::string getName() const { return m_name; }
             [[nodiscard]] int getExposure() const { return m_exposure; }
@@ -78,18 +86,19 @@ namespace DrumDetector::Types
             [[nodiscard]] int getPinkMin() const { return m_pink_min; }
 
             // --- Internal/Hardware Getters ---
+            [[nodiscard]] std::shared_ptr<spdlog::logger> getLogger() const { return m_logger; }
             [[nodiscard]] int getCameraIndex() const { return m_cameraIndex; }
             [[nodiscard]] int getTrayWidth() const { return m_trayWidth; }
             [[nodiscard]] int getTrayHeight() const { return m_trayHeight; }
             [[nodiscard]] double getMinMarkerArea() const { return m_minMarkerArea; }
             [[nodiscard]] double getMaxMarkerArea() const { return m_maxMarkerArea; }
+            [[nodiscard]] double getKeepPercentage() const { return m_keepPercentage; }
 
             // --- Others --- //
             [[nodiscard]] std::string getConfigPath() const { return config_path; }
 
         private:
-            /** @brief Default constructor creating an empty config. */
-            DrumDetectorConfig() = default;
+            DrumDetectorConfig();
 
             // --- Profile params --- //
             std::string m_name{};
@@ -100,11 +109,13 @@ namespace DrumDetector::Types
             int m_pink_min{};
 
             // --- Internal hardware params --- //
+            std::shared_ptr<spdlog::logger> m_logger;
             int m_cameraIndex{};
             int m_trayWidth{};
             int m_trayHeight{};
             double m_minMarkerArea{};
             double m_maxMarkerArea{};
+            double m_keepPercentage{};
 
             // --- Others --- //
             std::string config_path{};

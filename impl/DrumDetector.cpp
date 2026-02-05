@@ -17,36 +17,44 @@ namespace DrumDetector
         return instance;
     }
 
-    DrumDetector::DrumDetector()
+    DrumDetector::DrumDetector() : config(Types::DrumDetectorConfig::getInstance())
     {
-        init();
+        this->init();
     }
 
     DrumDetector::~DrumDetector()
     {
-        if (m_cap.isOpened())
+        if (this->m_cap.isOpened())
         {
-            m_cap.release();
+            this->m_cap.release();
         }
     }
 
     void DrumDetector::init()
     {
-        const auto& config = Types::DrumDetectorConfig::getInstance();
-        if (m_cap.isOpened())
+        if (this->m_cap.isOpened())
         {
-            m_cap.release();
+            this->config.getLogger()->info("[DrumDetector] Closing existing camera connection.");
+            this->m_cap.release();
         }
 
-        m_cap.open(config.getCameraIndex(), cv::CAP_V4L2);
+        this->config.getLogger()->info("[DrumDetector] Opening camera at index {}...", this->config.getCameraIndex());
+        this->m_cap.open(this->config.getCameraIndex(), cv::CAP_V4L2);
 
-        m_cap.set(cv::CAP_PROP_FOURCC, cv::VideoWriter::fourcc('M', 'J', 'P', 'G'));
-        m_cap.set(cv::CAP_PROP_FRAME_WIDTH, 1920);
-        m_cap.set(cv::CAP_PROP_FRAME_HEIGHT, 1080);
+        if (!this->m_cap.isOpened())
+        {
+            this->config.getLogger()->error("[DrumDetector] Failed to open camera index {}!", this->config.getCameraIndex());
+            return;
+        }
 
-        m_cap.set(cv::CAP_PROP_AUTO_EXPOSURE, 1);
+        this->m_cap.set(cv::CAP_PROP_FOURCC, cv::VideoWriter::fourcc('M', 'J', 'P', 'G'));
+        this->m_cap.set(cv::CAP_PROP_FRAME_WIDTH, 1920);
+        this->m_cap.set(cv::CAP_PROP_FRAME_HEIGHT, 1080);
+        this->m_cap.set(cv::CAP_PROP_AUTO_EXPOSURE, 1);
         std::this_thread::sleep_for(std::chrono::milliseconds(100));
-        m_cap.set(cv::CAP_PROP_EXPOSURE, config.getExposure());
+        this->m_cap.set(cv::CAP_PROP_EXPOSURE, this->config.getExposure());
+        this->config.getLogger()->debug("[DrumDetector] Camera initialized with {}x{} and exposure {}",
+            1920, 1080, this->config.getExposure());
 
         std::this_thread::sleep_for(std::chrono::seconds(2));
     }
@@ -56,21 +64,34 @@ namespace DrumDetector
         cv::Mat temp;
         for (int i = 0; i < 10; i++)
         {
-            m_cap.read(temp);
+            this->m_cap.read(temp);
         }
-        m_cap.read(temp);
-        return temp;
+        this->m_cap.read(temp);
+
+        if (temp.empty())
+        {
+            this->config.getLogger()->error("[DrumDetector] Failed to capture frame from camera!");
+            return temp;
+        }
+
+        const double ratio = this->config.getKeepPercentage();
+        const int newHeight = static_cast<int>(temp.rows * ratio);
+        const int yStart = temp.rows - newHeight;
+
+        this->config.getLogger()->debug("[DrumDetector] ROI applied: Keep bottom {}%", static_cast<int>(ratio * 100));
+
+        const cv::Rect roi(0, yStart, temp.cols, newHeight);
+        return temp(roi).clone();
     }
 
-    cv::Mat DrumDetector::enhanceSaturation(const cv::Mat& src)
+    cv::Mat DrumDetector::enhanceSaturation(const cv::Mat& src) const
     {
-        const auto& config = Types::DrumDetectorConfig::getInstance();
         cv::Mat lab;
         cv::cvtColor(src, lab, cv::COLOR_BGR2Lab);
 
         cv::Mat lut(1, 256, CV_8U);
         uint8_t* p = lut.ptr();
-        const auto factor = static_cast<float>(config.getSaturationBoost());
+        const auto factor = static_cast<float>(this->config.getSaturationBoost());
         for (int i = 0; i < 256; ++i)
         {
             p[i] = cv::saturate_cast<uint8_t>(128.0f + (static_cast<float>(i) - 128.0f) * factor);
@@ -86,16 +107,16 @@ namespace DrumDetector
 
     Types::DrumColorList DrumDetector::getDrumColors()
     {
-        auto& config = Types::DrumDetectorConfig::getInstance();
         Types::DrumColorList result;
         cv::Mat frame = getSnapshot();
 
         if (frame.empty())
         {
+            this->config.getLogger()->warn("[DrumDetector] Snapshot failed - frame is empty.");
             return result;
         }
 
-        std::filesystem::path configPath(config.getConfigPath());
+        std::filesystem::path configPath(this->config.getConfigPath());
         std::filesystem::path debugDir = configPath.parent_path() / "DrumDetectorDebug";
 
         std::filesystem::create_directories(debugDir);
@@ -107,11 +128,13 @@ namespace DrumDetector
         std::string timestamp = ss.str();
 
         cv::imwrite((debugDir / (timestamp + "_1_raw.png")).string(), frame);
+        this->config.getLogger()->debug("[DrumDetector] Snapshot captured. Saving debug images to {}", debugDir.string());
 
         cv::Mat processed, mask;
         cv::GaussianBlur(frame, processed, cv::Size(5, 5), 0);
         cv::cvtColor(processed, processed, cv::COLOR_BGR2Lab);
-        cv::inRange(processed, cv::Scalar(0, 0, config.getBThreshYellow()), cv::Scalar(255, 255, 255), mask);
+        cv::inRange(processed, cv::Scalar(0, 0, this->config.getBThreshYellow()),
+            cv::Scalar(255, 255, 255), mask);
 
         std::vector<std::vector<cv::Point>> contours;
         cv::findContours(mask, contours, cv::RETR_EXTERNAL, cv::CHAIN_APPROX_SIMPLE);
@@ -119,15 +142,18 @@ namespace DrumDetector
         std::vector<cv::Point2f> candidates;
         for (const auto& cnt : contours)
         {
-            if (double area = cv::contourArea(cnt); area > config.getMinMarkerArea() && area < config.getMaxMarkerArea())
+            if (double area = cv::contourArea(cnt); area > this->config.getMinMarkerArea()
+                && area < this->config.getMaxMarkerArea())
             {
                 if (cv::Moments m = cv::moments(cnt); m.m00 != 0)
                     candidates.emplace_back(m.m10 / m.m00, m.m01 / m.m00);
             }
         }
+        this->config.getLogger()->trace("[DrumDetector] Found {} raw contours.", contours.size());
 
         if (candidates.size() < 4)
         {
+            this->config.getLogger()->warn("[DrumDetector] Not enough marker candidates! Found {}, need 4.", candidates.size());
             return result;
         }
 
@@ -153,18 +179,23 @@ namespace DrumDetector
 
         if (best_pts.empty())
         {
+            this->config.getLogger()->warn("[DrumDetector] Geometry check failed: No valid tray-shaped quadrilateral found "
+                               "among {} candidates.", candidates.size());
             return result;
         }
+
+        this->config.getLogger()->info("[DrumDetector] Tray detected! Processing color slots...");
 
         cv::Mat warped;
         cv::Point2f dst_pts[4] = {
             {0, 0},
-            {static_cast<float>(config.getTrayWidth()), 0},
-            {static_cast<float>(config.getTrayWidth()), static_cast<float>(config.getTrayHeight())},
-            {0, static_cast<float>(config.getTrayHeight())}
+            {static_cast<float>(this->config.getTrayWidth()), 0},
+            {static_cast<float>(this->config.getTrayWidth()), static_cast<float>(this->config.getTrayHeight())},
+            {0, static_cast<float>(this->config.getTrayHeight())}
         };
         cv::Mat trans = cv::getPerspectiveTransform(best_pts.data(), dst_pts);
-        cv::warpPerspective(frame, warped, trans, cv::Size(config.getTrayWidth(), config.getTrayHeight()));
+        cv::warpPerspective(frame, warped, trans, cv::Size(this->config.getTrayWidth(),
+            this->config.getTrayHeight()));
 
         cv::Mat final_lab = enhanceSaturation(warped);
 
@@ -175,16 +206,16 @@ namespace DrumDetector
         std::vector<cv::Mat> chs;
         cv::split(final_lab, chs);
 
-        int slot_w = config.getTrayWidth() / 8;
+        int slot_w = this->config.getTrayWidth() / 8;
         for (int i = 0; i < 8; i++)
         {
-            cv::Rect roi(i * slot_w + 40, 40, slot_w - 80, config.getTrayHeight() - 80);
+            cv::Rect roi(i * slot_w + 40, 40, slot_w - 80, this->config.getTrayHeight() - 80);
             int a = getMedian(chs[1](roi));
             int b = getMedian(chs[2](roi));
 
-            if (b < config.getBlueMax())
+            if (b < this->config.getBlueMax())
                 result.items.push_back(Types::DrumColor::Blue);
-            else if (a > config.getPinkMin())
+            else if (a > this->config.getPinkMin())
                 result.items.push_back(Types::DrumColor::Pink);
             else
                 result.items.push_back(Types::DrumColor::Empty);
@@ -221,7 +252,12 @@ namespace DrumDetector
 
         if (height < 5.0) return false;
 
-        if (const double ratio = width / height; ratio < 2.5 || ratio > 6.0) return false;
+        if (const double ratio = width / height; ratio < 2.5 || ratio > 6.0)
+        {
+            this->config.getLogger()->trace("[DrumDetector] Shape rejected: Aspect ratio {:.2f} out of bounds.", ratio);
+            return false;
+        }
+
         if (std::abs(d1 - d3) > (width * 0.3)) return false;
 
         return true;

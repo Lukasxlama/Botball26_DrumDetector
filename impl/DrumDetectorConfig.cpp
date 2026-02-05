@@ -2,6 +2,7 @@
 #include <iostream>
 #include <fstream>
 #include <nlohmann/json.hpp>
+#include <utility>
 #include "../include/DrumDetectorConfig.hpp"
 
 // --- Code --- //
@@ -13,12 +14,17 @@ namespace DrumDetector::Types
         return instance;
     }
 
+    DrumDetectorConfig::DrumDetectorConfig()
+    {
+        m_logger = spdlog::default_logger();
+    }
+
     bool DrumDetectorConfig::load(const std::string& filePath)
     {
         std::ifstream file(filePath);
         if (!file.is_open())
         {
-            std::cerr << "[DrumDetectorConfig] Error: Could not open " << filePath << std::endl;
+            this->m_logger->error("[DrumDetectorConfig] Could not open file: {}", filePath);
             return false;
         }
         
@@ -31,7 +37,7 @@ namespace DrumDetector::Types
 
             if (!config.contains("DrumDetector"))
             {
-                std::cerr << "[DrumDetectorConfig] Error: 'DrumDetector' section missing" << std::endl;
+                this->m_logger->error("[DrumDetectorConfig] 'DrumDetector' section missing in {}", filePath);
                 return false;
             }
 
@@ -39,7 +45,7 @@ namespace DrumDetector::Types
 
             if (!drumSection.contains("Internal"))
             {
-                std::cerr << "[DrumDetectorConfig] Error: 'DrumDetector -> Internal' section missing" << std::endl;
+                this->m_logger->error("[DrumDetectorConfig] Error: 'DrumDetector -> Internal' section missing");
                 return false;
             }
 
@@ -50,10 +56,10 @@ namespace DrumDetector::Types
             m_trayHeight    = internal.value("TrayHeight", m_trayHeight);
             m_minMarkerArea = internal.value("MinMarkerArea", m_minMarkerArea);
             m_maxMarkerArea = internal.value("MaxMarkerArea", m_maxMarkerArea);
-
+            m_keepPercentage = internal.value("KeepPercentage", m_keepPercentage);
             if (!drumSection.contains("CurrentProfile") || !drumSection.contains("ProfileList"))
             {
-                std::cerr << "[DrumDetectorConfig] Error: 'DrumDetector -> CurrentProfile / ProfileList' section missing" << std::endl;
+                this->m_logger->error("[DrumDetectorConfig] Error: 'DrumDetector -> CurrentProfile / ProfileList' section missing");
                 return false;
             }
 
@@ -78,7 +84,7 @@ namespace DrumDetector::Types
 
             if (!profileFound)
             {
-                std::cerr << "[DrumDetectorConfig] Error: Profile '" << targetProfile << "' not found in list." << std::endl;
+                this->m_logger->error("[DrumDetectorConfig] Error: Profile '{}' not found in list.", targetProfile);
             }
 
             return profileFound;
@@ -86,8 +92,14 @@ namespace DrumDetector::Types
 
         catch (const nlohmann::json::exception& e)
         {
-            std::cerr << "[DrumDetectorConfig] JSON Parse Error: " << e.what() << std::endl;
+            this->m_logger->error("[DrumDetectorConfig] JSON Parse Error: {} ", e.what());
             return false;
         }
+    }
+
+    void DrumDetectorConfig::setLogger(std::shared_ptr<spdlog::logger> logger)
+    {
+        this->m_logger = std::move(logger);
+        this->m_logger->info("[DrumDetectorConfig] logger set successfully!");
     }
 }

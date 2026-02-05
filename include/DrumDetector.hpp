@@ -5,12 +5,13 @@
 #include <opencv2/opencv.hpp>
 #include <vector>
 #include "DrumColorList.hpp"
+#include "DrumDetectorConfig.hpp"
 
 namespace DrumDetector
 {
     /**
      * @class DrumDetector
-     * @brief Singleton for hardware-accelerated drum detection on Wombat (Pi 3).
+     * @brief Singleton for hardware-accelerated drum detection on Wombat.
      * * Handles the entire pipeline from frame acquisition to color classification.
      * Accesses hardware and profile parameters via Types::ScannerConfig.
      */
@@ -44,22 +45,24 @@ namespace DrumDetector
             ~DrumDetector();
 
             cv::VideoCapture m_cap;
+            Types::DrumDetectorConfig& config;
+            std::shared_ptr<spdlog::logger> logger;
 
             // --- Internal Processing Steps ---
 
             /** @brief Flushes the camera buffer and retrieves the latest frame. */
-            cv::Mat getSnapshot();
+            [[nodiscard]] cv::Mat getSnapshot();
 
             /** @brief Sorts 4 points in clockwise order for perspective transform. */
-            static std::vector<cv::Point2f> sortRadial(std::vector<cv::Point2f> pts);
+            [[nodiscard]] static std::vector<cv::Point2f> sortRadial(std::vector<cv::Point2f> pts);
 
             /** @brief Validates tray geometry based on aspect ratio and parallelism. */
-            static bool checkShape(std::vector<cv::Point2f> pts);
+            [[nodiscard]] bool checkShape(std::vector<cv::Point2f> pts);
 
             /** @brief Boosts image saturation using a high-performance LUT. */
-            static cv::Mat enhanceSaturation(const cv::Mat& src);
+            [[nodiscard]] cv::Mat enhanceSaturation(const cv::Mat& src) const;
 
             /** @brief Calculates the median value of an ROI for robust color detection. */
-            static int getMedian(const cv::Mat& channel);
+            [[nodiscard]] static int getMedian(const cv::Mat& channel);
     };
 }
