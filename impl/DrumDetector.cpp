@@ -38,21 +38,34 @@ namespace DrumDetector
             this->m_cap.release();
         }
 
-        this->config.getLogger()->info("[DrumDetector] Opening camera at index {}...", this->config.getCameraIndex());
-        this->m_cap.open(this->config.getCameraIndex(), cv::CAP_V4L2);
+        this->config.getLogger()->info("[DrumDetector] Opening camera at path '{}'...", this->config.getCameraPath());
+        this->m_cap.open(this->config.getCameraPath(), cv::CAP_V4L2);
 
         if (!this->m_cap.isOpened())
         {
-            this->config.getLogger()->error("[DrumDetector] Failed to open camera index {}!", this->config.getCameraIndex());
-            return;
+            const std::string err = "[DrumDetector] Failed to open camera at path: " + this->config.getCameraPath();
+            this->config.getLogger()->error(err);
+            throw std::runtime_error(err);
         }
 
+        this->config.getLogger()->info("[DrumDetector] Camera opened successfully.");
+
         this->m_cap.set(cv::CAP_PROP_FOURCC, cv::VideoWriter::fourcc('M', 'J', 'P', 'G'));
+        this->config.getLogger()->debug("[DrumDetector] Set PROP_FOURCC value: MJPG");
+
         this->m_cap.set(cv::CAP_PROP_FRAME_WIDTH, 1920);
+        this->config.getLogger()->debug("[DrumDetector] Set PROP_FRAME_WIDTH value: 1920");
+
         this->m_cap.set(cv::CAP_PROP_FRAME_HEIGHT, 1080);
+        this->config.getLogger()->debug("[DrumDetector] Set PROP_FRAME_HEIGHT value: 1080");
+
         this->m_cap.set(cv::CAP_PROP_AUTO_EXPOSURE, 1);
+        this->config.getLogger()->debug("[DrumDetector] Set PROP AUTO_EXPOSURE value: 1");
+
         std::this_thread::sleep_for(std::chrono::milliseconds(100));
         this->m_cap.set(cv::CAP_PROP_EXPOSURE, this->config.getExposure());
+        this->config.getLogger()->debug("[DrumDetector] Set PROP_EXPOSURE value: {}", this->config.getExposure());
+
         this->config.getLogger()->debug("[DrumDetector] Camera initialized with {}x{} and exposure {}",
             1920, 1080, this->config.getExposure());
 

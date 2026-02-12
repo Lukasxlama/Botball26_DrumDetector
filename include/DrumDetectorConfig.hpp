@@ -26,7 +26,7 @@ namespace DrumDetector::Types
      * {
      * "DrumDetector": {
      * "Internal": {
-     * "CameraIndex": 4,
+     * "CameraPath": '/dev/v4l/by-id/usb-SunplusIT_Inc_Integrated_RGB_Camera_01.00.00-video-index0',
      * "TrayWidth": 1000,
      * "TrayHeight": 250,
      * "MinMarkerArea": 200,
@@ -69,7 +69,7 @@ namespace DrumDetector::Types
              * @param filePath Path to the config.json (e.g., "config.json").
              * @return true if the current profile was loaded successfully, false otherwise.
              */
-            bool load(const std::string& filePath);
+            void load(const std::string& filePath);
 
             /**
              * @brief Sets a spdlogger for debug purposes.
@@ -87,7 +87,7 @@ namespace DrumDetector::Types
 
             // --- Internal/Hardware Getters ---
             [[nodiscard]] std::shared_ptr<spdlog::logger> getLogger() const { return m_logger; }
-            [[nodiscard]] int getCameraIndex() const { return m_cameraIndex; }
+            [[nodiscard]] std::string getCameraPath() const { return m_cameraPath; }
             [[nodiscard]] int getTrayWidth() const { return m_trayWidth; }
             [[nodiscard]] int getTrayHeight() const { return m_trayHeight; }
             [[nodiscard]] double getMinMarkerArea() const { return m_minMarkerArea; }
@@ -110,7 +110,7 @@ namespace DrumDetector::Types
 
             // --- Internal hardware params --- //
             std::shared_ptr<spdlog::logger> m_logger;
-            int m_cameraIndex{};
+            std::string m_cameraPath{};
             int m_trayWidth{};
             int m_trayHeight{};
             double m_minMarkerArea{};

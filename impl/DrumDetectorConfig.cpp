@@ -3,6 +3,7 @@
 #include <fstream>
 #include <nlohmann/json.hpp>
 #include <utility>
+#include <stdexcept>
 #include "../include/DrumDetectorConfig.hpp"
 
 // --- Code --- //
@@ -19,13 +20,14 @@ namespace DrumDetector::Types
         m_logger = spdlog::default_logger();
     }
 
-    bool DrumDetectorConfig::load(const std::string& filePath)
+    void DrumDetectorConfig::load(const std::string& filePath)
     {
         std::ifstream file(filePath);
         if (!file.is_open())
         {
-            this->m_logger->error("[DrumDetectorConfig] Could not open file: {}", filePath);
-            return false;
+            const std::string errMsg = "[DrumDetectorConfig] Could not open file: " + filePath;
+            this->m_logger->error(errMsg);
+            throw std::runtime_error(errMsg);
         }
         
         this->config_path = filePath;
@@ -37,21 +39,19 @@ namespace DrumDetector::Types
 
             if (!config.contains("DrumDetector"))
             {
-                this->m_logger->error("[DrumDetectorConfig] 'DrumDetector' section missing in {}", filePath);
-                return false;
+                throw std::runtime_error("[DrumDetectorConfig] 'DrumDetector' section missing in " + filePath);
             }
 
             auto drumSection = config["DrumDetector"];
 
             if (!drumSection.contains("Internal"))
             {
-                this->m_logger->error("[DrumDetectorConfig] Error: 'DrumDetector -> Internal' section missing");
-                return false;
+                throw std::runtime_error("[DrumDetectorConfig] 'Internal' section missing in JSON");
             }
 
             auto internal = drumSection["Internal"];
 
-            m_cameraIndex   = internal.value("CameraIndex", m_cameraIndex);
+            m_cameraPath   = internal.value("CameraPath", m_cameraPath);
             m_trayWidth     = internal.value("TrayWidth", m_trayWidth);
             m_trayHeight    = internal.value("TrayHeight", m_trayHeight);
             m_minMarkerArea = internal.value("MinMarkerArea", m_minMarkerArea);
@@ -59,8 +59,7 @@ namespace DrumDetector::Types
             m_keepPercentage = internal.value("KeepPercentage", m_keepPercentage);
             if (!drumSection.contains("CurrentProfile") || !drumSection.contains("ProfileList"))
             {
-                this->m_logger->error("[DrumDetectorConfig] Error: 'DrumDetector -> CurrentProfile / ProfileList' section missing");
-                return false;
+                throw std::runtime_error("[DrumDetectorConfig] 'CurrentProfile' or 'ProfileList' missing");
             }
 
             std::string targetProfile = drumSection["CurrentProfile"];
@@ -84,16 +83,15 @@ namespace DrumDetector::Types
 
             if (!profileFound)
             {
-                this->m_logger->error("[DrumDetectorConfig] Error: Profile '{}' not found in list.", targetProfile);
+                throw std::runtime_error("[DrumDetectorConfig] Profile '" + targetProfile + "' not found in list.");
             }
-
-            return profileFound;
         }
 
         catch (const nlohmann::json::exception& e)
         {
-            this->m_logger->error("[DrumDetectorConfig] JSON Parse Error: {} ", e.what());
-            return false;
+            const std::string errMsg = "[DrumDetectorConfig] JSON Parse Error: " + std::string(e.what());
+            this->m_logger->error(errMsg);
+            throw std::runtime_error(errMsg);
         }
     }
 
