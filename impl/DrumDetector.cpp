@@ -59,6 +59,9 @@ namespace DrumDetector
         this->m_cap.set(cv::CAP_PROP_FRAME_HEIGHT, 1080);
         this->config.getLogger()->debug("[DrumDetector] Set PROP_FRAME_HEIGHT value: 1080");
 
+        this->m_cap.set(cv::CAP_PROP_BRIGHTNESS, this->config.getBrightness());
+        this->config.getLogger()->debug("[DrumDetector] Set PROP_BRIGHTNESS value: {}", this->config.getBrightness());
+
         this->m_cap.set(cv::CAP_PROP_AUTO_EXPOSURE, 1);
         this->config.getLogger()->debug("[DrumDetector] Set PROP AUTO_EXPOSURE value: 1");
 
@@ -66,8 +69,8 @@ namespace DrumDetector
         this->m_cap.set(cv::CAP_PROP_EXPOSURE, this->config.getExposure());
         this->config.getLogger()->debug("[DrumDetector] Set PROP_EXPOSURE value: {}", this->config.getExposure());
 
-        this->config.getLogger()->debug("[DrumDetector] Camera initialized with {}x{} and exposure {}",
-            1920, 1080, this->config.getExposure());
+        this->config.getLogger()->debug("[DrumDetector] Camera initialized with {}x{}, exposure {} and brightness {}",
+                                            1920, 1080, this->config.getExposure(), this->config.getBrightness());
 
         std::this_thread::sleep_for(std::chrono::seconds(2));
     }

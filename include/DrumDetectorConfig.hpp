@@ -36,6 +36,7 @@ namespace DrumDetector::Types
      * "ProfileList": [
      * {
      * "name": "ProfileA",
+     * "brightness": 150,
      * "exposure": 120,
      * "b_thresh_yellow": 155,
      * "saturation_boost": 2.5,
@@ -44,6 +45,7 @@ namespace DrumDetector::Types
      * },
      * {
      * "name": "ProfileB",
+     * "brightness": 130,
      * "exposure": 150,
      * "b_thresh_yellow": 130,
      * "saturation_boost": 2.8,
@@ -79,6 +81,7 @@ namespace DrumDetector::Types
 
             // --- Profile Getters ---
             [[nodiscard]] std::string getName() const { return m_name; }
+            [[nodiscard]] int getBrightness() const { return m_brightness; }
             [[nodiscard]] int getExposure() const { return m_exposure; }
             [[nodiscard]] int getBThreshYellow() const { return m_b_thresh_yellow; }
             [[nodiscard]] double getSaturationBoost() const { return m_saturation_boost; }
@@ -102,6 +105,7 @@ namespace DrumDetector::Types
 
             // --- Profile params --- //
             std::string m_name{};
+            int m_brightness{};
             int m_exposure{};
             int m_b_thresh_yellow{};
             double m_saturation_boost{};

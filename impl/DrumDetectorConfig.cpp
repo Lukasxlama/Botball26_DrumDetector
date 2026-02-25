@@ -17,7 +17,7 @@ namespace DrumDetector::Types
 
     DrumDetectorConfig::DrumDetectorConfig()
     {
-        m_logger = spdlog::default_logger();
+        this->m_logger = spdlog::default_logger();
     }
 
     void DrumDetectorConfig::load(const std::string& filePath)
@@ -69,12 +69,13 @@ namespace DrumDetector::Types
             {
                 if (profile["name"] == targetProfile)
                 {
-                    m_name = targetProfile;
-                    m_exposure         = profile["exposure"];
-                    m_b_thresh_yellow  = profile["b_thresh_yellow"];
-                    m_saturation_boost = profile["saturation_boost"];
-                    m_blue_max         = profile["blue_max"];
-                    m_pink_min         = profile["pink_min"];
+                    this->m_name               = targetProfile;
+                    this->m_brightness       = profile["brightness"];
+                    this->m_exposure         = profile["exposure"];
+                    this->m_b_thresh_yellow  = profile["b_thresh_yellow"];
+                    this->m_saturation_boost = profile["saturation_boost"];
+                    this->m_blue_max         = profile["blue_max"];
+                    this->m_pink_min         = profile["pink_min"];
 
                     profileFound = true;
                     break;
